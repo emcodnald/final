@@ -143,51 +143,64 @@ int main() {
     header[10] = new int[]{255, 218, 0, 12, 3, 1, 0, 2, 17, 3, 17, 0, 63, 0};
     header[11] = new int[]{255, 217};
     int *hl = new int[]{2,18,36,5,5,19,33,183,33,183,14,2};
-    int l[4] = {33,183,33,183};
-    int ***hTables = new int**[4];
-    for(int i=6;i<10;++i) {
-        hTables[i-6] = new int*[2];
-        for(int j=5;j<21;++j) {
-            hTables[i-6][0] = push(hTables[i-6][0],header[i][j],j-5);
+    int l[4] = {33,183,33,183}; // for use with huffman table value representation
+    int ***hTables = new int**[4]; // where all the data goes, 4 huffman tables total
+    for(int i=6;i<10;++i) { // for values 6, 7, 8 and 9 in the header bytes array
+        hTables[i-6] = new int*[2]; // each entry in hTables is split in two parts, the first containing the amounts for
+        // each code length, and the second containing which numerical value each code represents
+        for(int j=5;j<21;++j) { // first entry always contains 16 values to represent code length values
+            // from 0 to 15
+            hTables[i-6][0] = push(hTables[i-6][0],header[i][j],j-5); // applies the byte value from the header
+            // array to the list
         }
-        for(int j=21;j<l[i-6];++j) {
+        for(int j=21;j<l[i-6];++j) { // second array contains the numerical values associated with the codes defined by
+            // the first entry. since the actual amount of values represented varies, a simple static array l is used to
+            // represent the lengths
             hTables[i-6][1] = push(hTables[i-6][1],header[i][j],j-21);
         }
     }
-    auto **hCodesVal = new int*[4];
-    auto **hCodesStr = new string*[4];
-    for(int k=0;k<4;++k) {
-        int e = 0;
-        int off = 0;
-        for (int i=0;i<16;++i) {
-            for(int j=0;j<hTables[k][0][i];++j) {
-                hCodesVal[k] = push(hCodesVal[k],hTables[k][1][off + j],off+j);
-                hCodesStr[k] = push(hCodesStr[k],showBitsL(e, i + 1),off+j);
-                e += 1;
+    auto **hCodesVal = new int*[4]; // integers for the numerical values
+    auto **hCodesStr = new string*[4]; // strings for the bitstream string
+    for(int k=0;k<4;++k) { // loop for 4 huffman tables
+        int e = 0; // sample integer value to use to make the bitstream
+        int off = 0; // offset that is used to scroll through the list of numerical values
+        for (int i=0;i<16;++i) { // loop for 16 code lengths
+            for(int j=0;j<hTables[k][0][i];++j) { // loop for how many codes of each length, can sometimes be 0, which
+                // means there are no codes of the particular length
+                hCodesVal[k] = push(hCodesVal[k],hTables[k][1][off + j],off+j); // add the value to the list of
+                // values
+                hCodesStr[k] = push(hCodesStr[k],showBitsL(e, i + 1),off+j); // add the string returned
+                // by showBitsL to the list of strings using sample integer e
+                e += 1; // sample integer increases by 1 for every entry added
             }
-            off += hTables[k][0][i];
-            e *= 2;
+            off += hTables[k][0][i]; // offset increases for every time all the codes of a specific length are added
+            e *= 2; // since all codes of a specific length are added, the length shifts, and the sample integer
+            // e doubles
         }
     }
-    ifstream file{R"(C:\Users\hates\Desktop\bit2jpgFiles\start.bmp)",ios::binary};
+    ifstream file{R"(start.bmp)",ios::binary};
     file.seekg(0, ios::end);
     long long length = file.tellg();
     file.seekg(0, ios::beg);
     char *rawData = new char[length];
     file.read(rawData, length);
-    double ***ybr;
-    int width = int(static_cast<unsigned char>(rawData[19]))*256+int(static_cast<unsigned char>(rawData[18]));
-    int height = int(static_cast<unsigned char>(rawData[23]))*256+int(static_cast<unsigned char>(rawData[22]));
-    int pW = (static_cast<int>(length)-54)/height;
-    for(int i=height-1;i>-1;--i) {
-        ybr = push(ybr,new double*[0],height-1-i);
-        for(int j=0;j<width;++j) {
-            auto *sub = new double[3];
-            for (int k = 0; k < 3; ++k) {
-                sub[k] = int(static_cast<unsigned char>(rawData[54 + i * pW + j * 3 + 2 - k]));
+    double ***ybr; // defines YCbCr matrix
+    int width = int(static_cast<unsigned char>(rawData[19]))*256+int(static_cast<unsigned char>(rawData[18])); // defines width
+    int height = int(static_cast<unsigned char>(rawData[23]))*256+int(static_cast<unsigned char>(rawData[22])); // defines height
+    int pW = (static_cast<int>(length)-54)/height; // important value that uses the length of the file minus the header bytes(54)
+    // divided by the height. this is used because the format of the bitmap file uses padding bytes of value 0 when the width is
+    // not divisible by 4, and could cause complications when reading the data
+    for(int i=height-1;i>-1;--i) { // bitmaps are recorded bottom-to-top, whereas jpegs are read top-to-bottom. a backwards loop is implemented
+        ybr = push(ybr,new double*[0],height-1-i); // new empty array to represent a row of pixels
+        for(int j=0;j<width;++j) { // loops for each pixel in the row
+            auto *sub = new double[3]; // short for substitute, a data holder for the pixel data for future use
+            for (int k = 0; k < 3; ++k) { // loops for three values, red, green, and blue
+                sub[k] = int(static_cast<unsigned char>(rawData[54 + i * pW + j * 3 + 2 - k])); // add the color data for the specific pixel
+                // at row i, column j(the expression 2 - k is used because chronologically, bitmaps store the byte data for each pixel
+                // as blue, green, red)
             }
-            double *samp = conv(sub);
-            ybr[height-1-i] = push(ybr[height-1-i],samp,j);
+            double *samp = conv(sub); // converts RGB data to YCbCr
+            ybr[height-1-i] = push(ybr[height-1-i],samp,j); // adds converted data to matrix
         }
     }
     int rX = int(width/16)+1;
@@ -207,21 +220,26 @@ int main() {
     int qt=1;
     cout << "Enter custom quantization from 1-254: " << endl;
     cin >> qt;
+    while (qt < 0 or qt > 254){
+        cout << "Invalid input, enter custom quantization from 1-254: " << endl;
+        cin >> qt;
+    }
     for(int x=0;x<runs;++x) {
-        double ***y;
-        for(int i=0;i<4;++i) {
-            y = push(y,new double*[0],i);
-            for(int j=0;j<8;++j) {
-                y[i] = push(y[i],new double[0],j);
-                for(int k=0;k<8;++k) {
+        double ***y; // array is defined
+        for(int i=0;i<4;++i) { // 4 blocks of luminance for every run of 16x16 pixels
+            y = push(y,new double*[0],i); // pushes an empty array
+            for(int j=0;j<8;++j) { // 8 pixels
+                y[i] = push(y[i],new double[0],j); // pushes an empty array
+                for(int k=0;k<8;++k) { // 8 pixels(making 8x8)
                     int sampX = k + (i % 2) * 8 + (x % rX) * 16;
-                    int sampY = int(i / 2) * 8 + j + int(x / rX) * 16;
+                    int sampY = int(i / 2) * 8 + j + int(x / rX) * 16; // since the blocks for luminance are half the size of the
+                    // 16x16 area, they are analyzed in the order of top-left, top-right, bottom-left, bottom right
                     if (sampY >= height)
-                        sampY = height-1;
+                        sampY = height-1; // fail-safe in case the sample y value is greater than the height
                     if (sampX >= width)
-                        sampX = width-1;
-                    y[i][j] = push(y[i][j],ybr[sampY][sampX][0],k);
-                }
+                        sampX = width-1; // fail-safe in case the sample x value is greater than the width
+                    y[i][j] = push(y[i][j],ybr[sampY][sampX][0],k); // adds the luminance value for the row and column specified
+                } // similar methods are used for the Cb and Cr matrices
             }
         }
         double **b;
@@ -254,17 +272,17 @@ int main() {
         }
         mList = push(mList,b,4);
         mList = push(mList,r,5);
-        for(int z=0;z<6;++z){
-            double **s = mList[z];
+        for(int z=0;z<6;++z){ // 6 matrices
+            double **s = mList[z]; // sample matrix depending on the iteration
             for(int i=0;i<8;++i) {
                 for (int j = 0; j < 8; ++j) {
-                    s[i][j] -= 128;
+                    s[i][j] -= 128; // 128 is subtracted from each value in the 8x8 matrix so that the data is centered around 0
                 }
             }
-            double **g = dct(s);
+            double **g = dct(s); // dct is performed
             for(int i=0;i<8;++i) {
                 for (int j = 0; j < 8; ++j) {
-                    g[i][j] = round(g[i][j] / qt);
+                    g[i][j] = round(g[i][j] / qt); // quantization value determines how compressed the image should be
                 }
             }
             int *ec= new int[64];
@@ -378,19 +396,20 @@ int main() {
                 bpl++;
             }
             for(int i=0;i<bpl;++i) {
-                if(z < 4) {
-                    if (i == 0) {
-                        bitStr += hCodesStr[0][bitPairs[i][0]];
-                        if (bitPairs[i][1] != 0)
-                            bitStr += decToBit(bitPairs[i][1]);
-                    } else {
-                        for (int j = 0; j < 162; ++j) {
-                            if (hCodesVal[1][j] == bitPairs[i][0]) {
-                                bitStr += hCodesStr[1][j];
-                                if (bitPairs[i][1] != 0)
-                                    bitStr += decToBit(bitPairs[i][1]);
+                if(z < 4) { // luminance is being analyzed here because z < 4
+                    if (i == 0) { // first value means DC coefficient
+                        bitStr += hCodesStr[0][bitPairs[i][0]]; // takes the string associated with the value
+                        if (bitPairs[i][1] != 0) // length of 0 means no need to write anything extra
+                            bitStr += decToBit(bitPairs[i][1]); // writes the string returned by decToBit
+                    } else { // anything other than first value is AC coefficient
+                        for (int j = 0; j < 162; ++j) { // there are more values to analyze, and they are not ordered,
+                            // so a loop is implemented to search for the proper value
+                            if (hCodesVal[1][j] == bitPairs[i][0]) { // finds the one specific string from the huffman table
+                                bitStr += hCodesStr[1][j]; // writes the string
+                                if (bitPairs[i][1] != 0) // length of 0 means no need to write anything extra
+                                    bitStr += decToBit(bitPairs[i][1]); // writes the string returned by decToBit
                             }
-                        }
+                        } // similar method is used for chrominance
                     }
                 }
                 else {
@@ -449,7 +468,7 @@ int main() {
         header[4] = push(header[4],qt,hl[4]);
         hl[4]++;
     }
-    ofstream rFile{R"(C:\Users\hates\Desktop\bit2jpgFiles\result.jpg)",ios::binary};
+    ofstream rFile{R"(result.jpg)",ios::binary};
     for(int i=0;i<12;++i){
         for(int j=0;j<hl[i];++j){
             rFile << static_cast<unsigned char>(header[i][j]);
